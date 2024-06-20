@@ -16,7 +16,7 @@ router.post('/send-otp', sendOtp)
 router.post('/verify-otp', verifyOtp)
 router.post('/signup', signup)
 router.post('/login', login)
-router.post('send-reset-otp', sendResetOtp)
-router.post('reset-password', resetPassword)
+router.post('/send-reset-otp', sendResetOtp)
+router.post('/reset-password', resetPassword)
 
 module.exports = router

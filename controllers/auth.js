@@ -124,6 +124,15 @@ const sendOtp = async (req, res) => {
 
 		const message = `Код подтверждения для регистрации на сайте mses-chat.uz: ${otp}`
 
+		const client = StreamChat.getInstance(api_key, api_secret)
+
+		const existingUser = await client.queryUsers({ phoneNumber })
+		if (existingUser.users.length > 0) {
+			return res
+				.status(400)
+				.json({ message: 'Номер телефона уже зарегистрирован' })
+		}
+
 		const response = await axios.post(
 			'https://notify.eskiz.uz/api/message/sms/send',
 			new URLSearchParams({
@@ -160,35 +169,29 @@ const sendOtp = async (req, res) => {
 	}
 }
 
+// async (err, storedOtp) => {
+//
+// }
+
 const verifyOtp = async (req, res) => {
 	const { phoneNumber, otp } = req.body
 	try {
-		redisClient.get(phoneNumber, async (err, storedOtp) => {
-			if (err) {
-				console.error('Redis error', err)
-				return res
-					.status(500)
-					.send({ success: false, message: 'Внутренняя ошибка сервера' })
-			}
-			if (storedOtp === otp) {
-				// Проверка, существует ли номер телефона
-				const client = StreamChat.getInstance(api_key, api_secret)
-				const existingUser = await client.queryUsers({ phoneNumber })
-				if (existingUser.users.length > 0) {
-					return res
-						.status(400)
-						.send({
-							success: false,
-							message: 'Номер телефона уже зарегистрирован',
-						})
-				}
-				return res
-					.status(200)
-					.send({ success: true, message: 'OTP успешно подтвержден' })
-			} else {
-				return res.status(400).send({ success: false, message: 'Неверный OTP' })
-			}
-		})
+		const pingRes = await redisClient.ping('hi')
+		const storedOtp = await redisClient.get(phoneNumber)
+		// if (err) {
+		// 	console.error('Redis error', err)
+		// 	return res
+		// 		.status(500)
+		// 		.send({ success: false, message: 'Внутренняя ошибка сервера' })
+		// }
+		// console.log('OTP', storedOtp, otp)
+		if (storedOtp === otp) {
+			return res
+				.status(200)
+				.send({ success: true, message: 'OTP успешно подтвержден' })
+		} else {
+			return res.status(400).send({ success: false, message: 'Неверный OTP' })
+		}
 	} catch (error) {
 		console.error('Ошибка при подтверждение', error)
 		res
