@@ -83,9 +83,25 @@ const signup = async (req, res) => {
 
 		const serverClient = connect(api_key, api_secret, app_id)
 
+		const client = StreamChat.getInstance(api_key, api_secret)
+
+		const existingUser = await client.queryUsers({ phoneNumber })
+		if (existingUser.users.length > 0) {
+			return res
+				.status(400)
+				.json({ message: 'Номер телефона уже зарегистрирован' })
+		}
+
 		const hashedPassword = await bcrypt.hash(password, 10)
 
 		const token = serverClient.createUserToken(userId)
+
+		await client.upsertUser({
+			id: userId,
+			name: username,
+			hashedPassword,
+			phoneNumber,
+		})
 
 		res
 			.status(200)
@@ -106,7 +122,7 @@ const sendOtp = async (req, res) => {
 		console.log('	PhoneNumber --', phoneNumber)
 		redisClient.setEx(phoneNumber, 300, otp)
 
-		const message = `Ваш код подтверждение для входа в mses-chat - ${otp}`
+		const message = `Код подтверждения для регистрации на сайте mses-chat.uz: ${otp}`
 
 		const response = await axios.post(
 			'https://notify.eskiz.uz/api/message/sms/send',
@@ -147,7 +163,7 @@ const sendOtp = async (req, res) => {
 const verifyOtp = async (req, res) => {
 	const { phoneNumber, otp } = req.body
 	try {
-		redisClient.get(phoneNumber, (err, storedOtp) => {
+		redisClient.get(phoneNumber, async (err, storedOtp) => {
 			if (err) {
 				console.error('Redis error', err)
 				return res
@@ -155,11 +171,22 @@ const verifyOtp = async (req, res) => {
 					.send({ success: false, message: 'Внутренняя ошибка сервера' })
 			}
 			if (storedOtp === otp) {
+				// Проверка, существует ли номер телефона
+				const client = StreamChat.getInstance(api_key, api_secret)
+				const existingUser = await client.queryUsers({ phoneNumber })
+				if (existingUser.users.length > 0) {
+					return res
+						.status(400)
+						.send({
+							success: false,
+							message: 'Номер телефона уже зарегистрирован',
+						})
+				}
 				return res
 					.status(200)
 					.send({ success: true, message: 'OTP успешно подтвержден' })
 			} else {
-				return res.status(400).send({ success: true, message: 'Неверный OTP' })
+				return res.status(400).send({ success: false, message: 'Неверный OTP' })
 			}
 		})
 	} catch (error) {
@@ -170,4 +197,78 @@ const verifyOtp = async (req, res) => {
 	}
 }
 
-module.exports = { signup, login, sendOtp, verifyOtp, redisClient }
+const sendResetOtp = async (req, res) => {
+	const { phoneNumber } = req.body
+	const otp = generateOtp()
+	try {
+		const userExists = await checkUserExistsByPhone(phoneNumber)
+		if (!userExists) {
+			return res
+				.status(400)
+				.json({ message: 'Номер телефона не зарегистрирован' })
+		}
+
+		redisClient.setEx(phoneNumber, 300, otp)
+
+		const message = `Восстановление пароля для платформы mses chat: ${otp}`
+
+		await axios.post(
+			'https://notify.eskiz.uz/api/message/sms/send',
+			new URLSearchParams({
+				mobile_phone: phoneNumber,
+				message: message,
+				from: 'mses',
+			}),
+			{
+				'Content-Type': 'application/x.www-form-urlencoded;charset=utf-8',
+				headers: { Authorization: `Bearer ${authToken}` },
+			}
+		)
+		res.status(200).send({ success: true, message: 'Код успешно отправлен' })
+	} catch (error) {
+		console.error('Ошибка при отправке', error)
+		res.status(500).send({ success: false, message: 'Ошибка при отправке' })
+	}
+}
+
+const resetPassword = async (req, res) => {
+	const { phoneNumber, otp, newPassword } = req.body
+	try {
+		const storedOtp = await redisClient.get(phoneNumber)
+		if (storedOtp !== otp) {
+			return res.status(400).send({ success: false, message: 'Неверный OTP' })
+		}
+		const hashedPassword = await bcrypt.hash(newPassword, 10)
+		await updatePasswordByPhone(phoneNumber, hashedPassword)
+		res.status(200).send({ success: true, message: 'Пароль успешно сброшен' })
+	} catch (error) {
+		console.error('Ошибка при сбросе пароля')
+	}
+}
+
+const checkUserExistsByPhone = async phoneNumber => {
+	const client = StreamChat.getInstance(api_key, api_secret)
+	const { users } = await client.queryUsers({ phoneNumber })
+	return users.length > 0
+}
+
+const updatePasswordByPhone = async (phoneNumber, newPassword) => {
+	const client = StreamChat.getInstance(api_key, api_secret)
+	const { users } = await client.queryUsers({ phoneNumber })
+	if (users.length > 0) {
+		await client.partialUpdateUser({
+			id: users[0].id,
+			hashedPassword: newPassword,
+		})
+	}
+}
+
+module.exports = {
+	signup,
+	login,
+	sendOtp,
+	verifyOtp,
+	sendResetOtp,
+	resetPassword,
+	redisClient,
+}
