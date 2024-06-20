@@ -1,4 +1,6 @@
 const express = require('express')
+const https = require('https')
+const fs = require('fs')
 const cors = require('cors')
 
 const authRoutes = require('./routes/auth.js')
@@ -45,5 +47,12 @@ app.post('/', (req, res) => {
 	}
 	return res.status(200).send('Not a new message request')
 })
+
+const httpsOptions = {
+	key: fs.readFileSync('./key.pem'),
+	cert: fs.readFileSync('./cert.pem'),
+}
+
+const server = https.createServer(httpsOptions, app)
 
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`))
