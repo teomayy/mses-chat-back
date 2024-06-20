@@ -49,10 +49,15 @@ app.post('/', (req, res) => {
 })
 
 const httpsOptions = {
-	key: fs.readFileSync('./key.pem'),
-	cert: fs.readFileSync('./cert.pem'),
+	key: fs.readFileSync('./ryans-key.pem'),
+	cert: fs.readFileSync('./ryans-cert.pem'),
 }
 
-const server = https.createServer(httpsOptions, app)
+const server = https.createServer(httpsOptions, (res, req) => {
+	res.writeHead(200)
+	res.end('Hello World!')
+})
+
+// server.listen(443)
 
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`))
