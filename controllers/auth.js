@@ -66,7 +66,12 @@ const login = async (req, res) => {
 		const token = serverClient.createUserToken(users[0].id)
 
 		if (success) {
-			res.status(200).json({ token, username, userId: users[0].id })
+			res.status(200).json({
+				token,
+				fullName: users[0].fullName,
+				username,
+				userId: users[0].id,
+			})
 		} else {
 			res.status(500).json({ message: 'Неверный пароль' })
 		}
@@ -77,7 +82,7 @@ const login = async (req, res) => {
 
 const signup = async (req, res) => {
 	try {
-		const { phoneNumber, username, password } = req.body
+		const { phoneNumber, username, fullName, password } = req.body
 
 		const userId = crypto.randomBytes(16).toString('hex')
 
@@ -85,11 +90,12 @@ const signup = async (req, res) => {
 
 		const client = StreamChat.getInstance(api_key, api_secret)
 
-		const existingUser = await client.queryUsers({ phoneNumber })
+		const existingUser = await client.queryUsers({ username })
+
 		if (existingUser.users.length > 0) {
 			return res
 				.status(400)
-				.json({ message: 'Номер телефона уже зарегистрирован' })
+				.json({ success: false, message: 'Имя пользователя уже существует' })
 		}
 
 		const hashedPassword = await bcrypt.hash(password, 10)
@@ -101,11 +107,12 @@ const signup = async (req, res) => {
 			name: username,
 			hashedPassword,
 			phoneNumber,
+			fullName,
 		})
 
 		res
 			.status(200)
-			.json({ token, username, userId, hashedPassword, phoneNumber })
+			.json({ token, fullName, username, userId, hashedPassword, phoneNumber })
 	} catch (error) {
 		res.status(500).json({ message, error })
 	}
@@ -119,18 +126,22 @@ const sendOtp = async (req, res) => {
 	const { phoneNumber } = req.body
 	const otp = generateOtp()
 	try {
-		console.log('	PhoneNumber --', phoneNumber)
 		redisClient.setEx(phoneNumber, 300, otp)
 
 		const message = `Код подтверждения для регистрации на сайте mses-chat.uz: ${otp}`
 
 		const client = StreamChat.getInstance(api_key, api_secret)
 
-		const existingUser = await client.queryUsers({ phoneNumber })
+		const filter = Number(phoneNumber)
+		const existingUser = await client.queryUsers({
+			phoneNumber: filter,
+		})
+
+		console.log('tel-1', existingUser.users)
 		if (existingUser.users.length > 0) {
 			return res
 				.status(400)
-				.json({ message: 'Номер телефона уже зарегистрирован' })
+				.json({ success: false, message: 'Номер телефона уже зарегистрирован' })
 		}
 
 		const response = await axios.post(
@@ -145,7 +156,6 @@ const sendOtp = async (req, res) => {
 				headers: { Authorization: `Bearer ${authToken}` },
 			}
 		)
-		console.log('RRRRRR', response)
 		res.status(200).send({ success: true, message: 'Код успешно отправлен' })
 
 		// const templateData = {
@@ -176,7 +186,6 @@ const sendOtp = async (req, res) => {
 const verifyOtp = async (req, res) => {
 	const { phoneNumber, otp } = req.body
 	try {
-		const pingRes = await redisClient.ping('hi')
 		const storedOtp = await redisClient.get(phoneNumber)
 		// if (err) {
 		// 	console.error('Redis error', err)
@@ -238,7 +247,9 @@ const resetPassword = async (req, res) => {
 	const { phoneNumber, otp, newPassword } = req.body
 	try {
 		const storedOtp = await redisClient.get(phoneNumber)
+
 		if (storedOtp !== otp) {
+			console.log('lll', storedOtp, otp)
 			return res.status(400).send({ success: false, message: 'Неверный OTP' })
 		}
 		const hashedPassword = await bcrypt.hash(newPassword, 10)
@@ -251,17 +262,20 @@ const resetPassword = async (req, res) => {
 
 const checkUserExistsByPhone = async phoneNumber => {
 	const client = StreamChat.getInstance(api_key, api_secret)
-	const { users } = await client.queryUsers({ phoneNumber })
+	const filter = Number(phoneNumber)
+	const { users } = await client.queryUsers({ phoneNumber: filter })
 	return users.length > 0
 }
 
 const updatePasswordByPhone = async (phoneNumber, newPassword) => {
 	const client = StreamChat.getInstance(api_key, api_secret)
-	const { users } = await client.queryUsers({ phoneNumber })
+	const filter = Number(phoneNumber)
+	const { users } = await client.queryUsers({ phoneNumber: filter })
+	console.log(users)
 	if (users.length > 0) {
 		await client.partialUpdateUser({
 			id: users[0].id,
-			hashedPassword: newPassword,
+			set: { hashedPassword: newPassword },
 		})
 	}
 }
