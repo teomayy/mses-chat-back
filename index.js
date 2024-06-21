@@ -48,17 +48,17 @@ app.post('/', (req, res) => {
 	return res.status(200).send('Not a new message request')
 })
 
-// const httpsOptions = {
-// 	key: fs.readFileSync('./etc/letsencrypt/live/mses-chat.uz-0001/privkey.pem'),
-// 	cert: fs.readFileSync(
-// 		'./etc/letsencrypt/live/mses-chat.uz-0001/fullchain.pem'
-// 	),
-// }
+const httpsOptions = {
+	key: fs.readFileSync('./etc/letsencrypt/live/mses-chat.uz-0001/privkey.pem'),
+	cert: fs.readFileSync(
+		'./etc/letsencrypt/live/mses-chat.uz-0001/fullchain.pem'
+	),
+}
 
-// const server = https.createServer(httpsOptions, app)
+const server = https.createServer(httpsOptions, app)
 
-// server.listen(PORT, () => {
-// 	console.log('HTTPS Server running')
-// })
+server.listen(PORT, () => {
+	console.log('HTTPS Server running')
+})
 
-app.listen(PORT, () => console.log(`Server running on port ${PORT}`))
+// app.listen(PORT, () => console.log(`Server running on port ${PORT}`))
