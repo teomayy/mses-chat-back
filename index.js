@@ -49,9 +49,9 @@ app.post('/', (req, res) => {
 })
 
 const httpsOptions = {
-	key: fs.readFileSync('./etc/letsencrypt/live/mses-chat.uz-0001/privkey1.pem'),
+	key: fs.readFileSync('./etc/letsencrypt/live/mses-chat.uz-0001/privkey.pem'),
 	cert: fs.readFileSync(
-		'./etc/letsencrypt/live/mses-chat.uz-0001/fullchain1.pem'
+		'./etc/letsencrypt/live/mses-chat.uz-0001/fullchain.pem'
 	),
 }
 
