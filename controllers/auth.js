@@ -10,8 +10,8 @@ require('dotenv').config()
 const api_key = process.env.STREAM_API_KEY
 const api_secret = process.env.STREAM_API_SECRET
 const app_id = process.env.STREAM_APP_ID
-
-const authToken = process.env.ESKIZ_AUTH_TOKEN
+const ESKIZ_EMAIL = process.env.ESKIZ_EMAIL
+const ESKIZ_PASSWORD = process.env.ESKIZ_PASSWORD
 
 const redisClient = redis.createClient()
 
@@ -122,13 +122,77 @@ const generateOtp = () => {
 	return Math.floor(100000 + Math.random() * 900000).toString()
 }
 
+const getEskizToken = async () => {
+	let token = await redisClient.get('eskiz_auth_token')
+	if (!token) {
+		token = await refreshEskizToken()
+	}
+	return token
+}
+
+const refreshEskizToken = async () => {
+	try {
+		const response = await axios.post(
+			'https://notify.eskiz.uz/api/auth/refresh',
+			{},
+			{
+				headers: {
+					Authorization: `Bearer ${process.env.ESKIZ_AUTH_TOKEN}`,
+				},
+			}
+		)
+		const newToken = response.data.data.token
+		process.env.ESKIZ_AUTH_TOKEN = newToken
+
+		await redisClient.setEx('eskiz_auth_token', 29 * 24 * 60 * 60, newToken)
+
+		console.log('Eskiz token обновлён:', newToken)
+		return newToken
+	} catch (error) {
+		console.error(
+			'Ошибка при обновлении токена Eskiz',
+			error.response?.data || error
+		)
+		return await generateNewEskizToken()
+	}
+}
+
+const generateNewEskizToken = async () => {
+	try {
+		const response = await axios.post(
+			'https://notify.eskiz.uz/api/auth/login',
+			new URLSearchParams({
+				email: process.env.ESKIZ_EMAIL,
+				password: process.env.ESKIZ_PASSWORD,
+			}),
+			{
+				headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+			}
+		)
+		const newToken = response.data.data.token
+		process.env.ESKIZ_AUTH_TOKEN = newToken
+
+		await redisClient.setEx('eskiz_auth_token', 29 * 24 * 60 * 60, newToken)
+		console.log('Новый Eskiz token получен:', newToken)
+		return newToken
+	} catch (error) {
+		console.error(
+			'Ошибка при получении нового токена Eskiz',
+			error.response?.data || error
+		)
+		throw new Error('Не удалось получить новый токен Eskiz')
+	}
+}
+
 const sendOtp = async (req, res) => {
 	const { phoneNumber } = req.body
 	const otp = generateOtp()
 	try {
-		redisClient.setEx(phoneNumber, 300, otp)
+		await redisClient.setEx(phoneNumber, 300, otp)
 
 		const message = `Код подтверждения для регистрации на сайте mses-chat.uz: ${otp}`
+
+		let token = await getEskizToken()
 
 		const client = StreamChat.getInstance(api_key, api_secret)
 
@@ -153,7 +217,7 @@ const sendOtp = async (req, res) => {
 			}),
 			{
 				'Content-Type': 'application/x-www-form-urlencoded;charset=utf-8',
-				headers: { Authorization: `Bearer ${authToken}` },
+				headers: { Authorization: `Bearer ${token}` },
 			}
 		)
 		res.status(200).send({ success: true, message: 'Код успешно отправлен' })
@@ -224,6 +288,8 @@ const sendResetOtp = async (req, res) => {
 
 		const message = `Восстановление пароля для платформы mses chat: ${otp}`
 
+		let token = getEskizToken()
+
 		await axios.post(
 			'https://notify.eskiz.uz/api/message/sms/send',
 			new URLSearchParams({
@@ -233,7 +299,7 @@ const sendResetOtp = async (req, res) => {
 			}),
 			{
 				'Content-Type': 'application/x.www-form-urlencoded;charset=utf-8',
-				headers: { Authorization: `Bearer ${authToken}` },
+				headers: { Authorization: `Bearer ${token}` },
 			}
 		)
 		res.status(200).send({ success: true, message: 'Код успешно отправлен' })
