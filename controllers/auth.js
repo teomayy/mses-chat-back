@@ -118,21 +118,24 @@ const signup = async (req, res) => {
 	}
 }
 
-const generateOtp = () => {
-	return Math.floor(100000 + Math.random() * 900000).toString()
-}
+const generateOtp = () => String(Math.floor(100000 + Math.random() * 900000))
 
 const getEskizToken = async () => {
-	let token = await redisClient.get('eskiz_auth_token')
-	if (!token) {
-		token = await refreshEskizToken()
+	try {
+		let token = await redisClient.get('eskiz_auth_token')
+		if (!token) {
+			token = await refreshEskizToken()
+		}
+		return token
+	} catch (error) {
+		console.error('Ошибка получения Eskiz-токена:', error)
+		throw new Error('Ошибка получения Eskiz-токена')
 	}
-	return token
 }
 
 const refreshEskizToken = async () => {
 	try {
-		const response = await axios.post(
+		const response = await axios.patch(
 			'https://notify.eskiz.uz/api/auth/refresh',
 			{},
 			{
@@ -288,7 +291,7 @@ const sendResetOtp = async (req, res) => {
 
 		const message = `Восстановление пароля для платформы mses chat: ${otp}`
 
-		let token = getEskizToken()
+		let token = await getEskizToken()
 
 		await axios.post(
 			'https://notify.eskiz.uz/api/message/sms/send',
